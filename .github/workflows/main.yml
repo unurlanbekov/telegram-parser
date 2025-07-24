@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download last link artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: last-link-data
         continue-on-error: true
@@ -35,7 +35,7 @@ jobs:
         run: python parser.py
 
       - name: Upload last link artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: last-link-data
           path: last_link.txt
