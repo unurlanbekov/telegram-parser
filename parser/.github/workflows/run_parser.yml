@@ -1,55 +1,46 @@
-# Имя нашего workflow (отображается на GitHub)
 name: News Parser CI
-
-# Триггеры для запуска
 on:
-  # Запуск по расписанию: каждые 3 часа
   schedule:
     - cron: '0 */3 * * *'
   
-  # Кнопка для ручного запуска (удобно для тестов)
   workflow_dispatch:
 
 jobs:
-  # Название единственной задачи
+
   parse-and-send:
-    # Запускаем на последней версии Ubuntu
+  
     runs-on: ubuntu-latest
     
     steps:
-      # Шаг 1: Скачиваем артефакт (файл с последней ссылкой) с предыдущего запуска
+    
       - name: Download last link artifact
         uses: actions/download-artifact@v3
         with:
           name: last-link-data
-        # Продолжаем, даже если артефакта нет (первый запуск)
+        
         continue-on-error: true
 
-      # Шаг 2: Клонируем код из нашего репозитория
       - name: Check out repository code
         uses: actions/checkout@v3
 
-      # Шаг 3: Настраиваем Python
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      # Шаг 4: Устанавливаем зависимости из requirements.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      # Шаг 5: Запускаем наш Python-скрипт
       - name: Run Python parser script
         env:
-          # Передаем секреты в переменные окружения
+  
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python parser.py
 
-      # Шаг 6: Загружаем артефакт (файл с новой ссылкой) для следующего запуска
       - name: Upload last link artifact
         uses: actions/upload-artifact@v3
         with:
