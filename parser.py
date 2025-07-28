@@ -22,29 +22,33 @@ def rewrite_text_with_gpt_tr(text, title, keywords=None):
     keywords = keywords or ["futbol", "spor haberleri", "transfer", "a spor izle", "a spor canlı izle", "son dakika spor", "a spor canlı", "Canlı maç izle", "spor ekranı"]
     limited_text = text[:4000]
     
-    prompt = f"""
-Sen deneyimli bir haber editörüsün. Aşağıdaki spor haberini SEO uyumlu, %100 özgün ve yapısal olarak düzenlenmiş şekilde yeniden yazmanı istiyorum.
+prompt = f"""
+Aşağıdaki haberi %100 özgün, SEO uyumlu ve yapılandırılmış şekilde yeniden yazmanı istiyorum.
 
-Yapı:
-1. Başlık (değiştirme).
-2. <b>Lead</b>: İlk paragrafta haberin en dikkat çekici özetini ver.
-3. <b>İçerik</b>: Haber detaylarını açıkla, kısa paragraflara böl. Tüm önemli bilgileri aktar.
-4. <b>Kapanış</b>: Haberi genel bir değerlendirme ya da gelecek beklentisiyle bitir.
+Çıktı formatı **kesinlikle** aşağıdaki gibi olmalı:
+
+Başlık: {title}
+
+Lead: [Haberin özeti — dikkat çekici, tıklamaya teşvik edici bir paragraf]
+
+İçerik:
+[Haberin detayları — paragraflara bölünmüş, doğal ve akıcı bir anlatım]
+
+Kapanış: [Genel bir değerlendirme veya gelişme beklentisiyle kapanış cümlesi]
 
 Kurallar:
-- İçeriği kısaltma, ama özgünleştir.
-- Anahtar kelimeleri ({', '.join(keywords)}) doğal bir şekilde dahil et.
-- Resmî, akıcı, profesyonel Türkçe kullan.
-- İlginç ve tıklamaya teşvik eden dil tercih et.
-- Gereksiz tekrar veya boş ifadelerden kaçın.
+- Başlığı değiştirme.
+- Yazım dili profesyonel, gazeteci üslubunda olsun.
+- Anahtar kelimeleri şu şekilde metne entegre et: {', '.join(keywords)}
+- Yazının anlamını koru, ama cümleleri özgün hale getir.
+- Her bölümü açıkça etiketle (Lead:, İçerik:, Kapanış:) — bunlar mutlaka görünsün!
 
-Başlık: “{title}”
-
-Yeniden yazılacak metin:
+Metin:
 \"\"\"
 {limited_text}
 \"\"\"
 """
+
 
     try:
         logger.info("⏳ OpenAI GPT ile metin yeniden yazılıyor (TR + SEO)...")
