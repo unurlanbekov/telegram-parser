@@ -17,8 +17,8 @@ if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     logger.error("❌ Отсутствует TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
     exit()
 
-# --- OpenAI клиент ---
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# --- Настройка OpenAI API ---
+openai.api_key = OPENAI_API_KEY
 
 # --- GPT переписывание ---
 def rewrite_text_with_gpt_tr(text, title, keywords=None):
@@ -45,20 +45,27 @@ Metin:
 
     try:
         logger.info(f"⏳ GPT ile yeniden yazılıyor... ({len(text)} karakter)")
-  openai.api_key = OPENAI_API_KEY
 
-response = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo",
-    messages=[{"role": "user", "content": prompt}],
-    temperature=0.6,
-    max_tokens=3000
-)
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6,
+            max_tokens=3000
+        )
+
         rewritten = response.choices[0].message.content.strip()
-        logger.success("✅ GPT успешно переписал текст.")
+        logger.debug(f"📤 GPT-ответ:\n{rewritten[:1000]}...")  # выводим первые 1000 символов
+
+        if rewritten == text.strip():
+            logger.warning("⚠️ GPT вернул тот же текст — возможно, что-то пошло не так.")
+        else:
+            logger.success("✅ GPT успешно переписал текст.")
+
         return rewritten
+
     except Exception as e:
         logger.error(f"❌ GPT hatası: {e}")
-        return text[:3500]
+        return "[GPT HATASI] " + text[:3500]
 
 # --- Telegram отправка ---
 def send_to_telegram(text):
