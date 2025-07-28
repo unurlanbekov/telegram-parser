@@ -19,30 +19,30 @@ if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
 
 openai.api_key = OPENAI_API_KEY
 
-def rewrite_text_with_gpt_tr(text, title, keywords=None):
-    keywords = keywords or ["futbol", "spor haberleri", "transfer", "Ajansspor"]
-    limited_text = text[:4000]
-
     prompt = f"""
-Sen bir gazetecisin ve aşağıdaki metni SEO uyumlu ve benzersiz bir şekilde yeniden yazman gerekiyor.
+Sen deneyimli bir haber editörüsün. Aşağıdaki spor haberini SEO uyumlu, %100 özgün ve yapısal olarak düzenlenmiş şekilde yeniden yazmanı istiyorum.
+
+Yapı:
+1. Başlık (değiştirme).
+2. <b>Lead</b>: İlk paragrafta haberin en dikkat çekici özetini ver.
+3. <b>İçerik</b>: Haber detaylarını açıkla, kısa paragraflara böl. Tüm önemli bilgileri aktar.
+4. <b>Kapanış</b>: Haberi genel bir değerlendirme ya da gelecek beklentisiyle bitir.
 
 Kurallar:
-- Metnin anlamını bozma.
-- Doğal ve akıcı bir Türkçe kullan.
-- İlk paragrafta özet (lead) ver.
-- Anahtar kelimeleri ({', '.join(keywords)}) doğal şekilde metne serpiştir.
-- Gereksiz bilgi ekleme, ama önemli detayları ön plana çıkar.
-- Başlığı koru, ama metni daha akıcı, haber diliyle ve paragraflara ayrılmış şekilde yaz.
-- Uzunluğu KISALTMA — mümkün olduğunca tüm içeriği kullan. Her bilgiyi yeniden yaz, ama çıkartma.
-- Sonunda kısa bir değerlendirme veya gelişme beklentisiyle kapanış yap.
+- İçeriği kısaltma, ama özgünleştir.
+- Anahtar kelimeleri ({', '.join(keywords)}) doğal bir şekilde dahil et.
+- Resmî, akıcı, profesyonel Türkçe kullan.
+- İlginç ve tıklamaya teşvik eden dil tercih et.
+- Gereksiz tekrar veya boş ifadelerden kaçın.
 
 Başlık: “{title}”
 
-Yeniden yazılacak haber:
+Yeniden yazılacak metin:
 \"\"\"
 {limited_text}
 \"\"\"
 """
+
 
 
     try:
