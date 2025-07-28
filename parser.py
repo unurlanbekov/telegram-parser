@@ -2,68 +2,29 @@ import os
 import requests
 from bs4 import BeautifulSoup
 from loguru import logger
-import openai
+import re
 
-# --- API ключи ---
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import torch
+
+# --- Telegram конфиг ---
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-# --- Проверка ключей ---
-if not OPENAI_API_KEY:
-    logger.error("Отсутствует переменная OPENAI_API_KEY.")
-    exit()
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-    logger.error("Ошибка: не найдены переменные окружения TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
+    logger.error("❌ Отсутствуют переменные окружения TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
     exit()
 
-openai.api_key = OPENAI_API_KEY
-def rewrite_text_with_gpt_tr(text, title, keywords=None):
-    keywords = keywords or ["futbol", "spor haberleri", "transfer", "a spor izle", "a spor canlı izle", "son dakika spor", "a spor canlı", "Canlı maç izle", "spor ekranı"]
-    limited_text = text[:4000]
+# --- Загрузка NLP-модели для турецкого рерайта ---
+logger.info("📦 Загружаем модель paraphraser (mT5 Turkish)...")
+tokenizer = AutoTokenizer.from_pretrained("boun-tabi/mT5-paraphraser-turkish")
+model = AutoModelForSeq2SeqLM.from_pretrained("boun-tabi/mT5-paraphraser-turkish")
 
-
-    prompt = f"""
-Aşağıdaki haberi %100 özgün, SEO uyumlu ve yapılandırılmış şekilde yeniden yazmanı istiyorum.
-
-Çıktı formatı **kesinlikle** aşağıdaki gibi olmalı:
-
-Başlık: {title}
-
-Lead: [Haberin özeti — dikkat çekici, tıklamaya teşvik edici bir paragraf]
-
-İçerik:
-[Haberin detayları — paragraflara bölünmüş, doğal ve akıcı bir anlatım]
-
-Kapanış: [Genel bir değerlendirme veya gelişme beklentisiyle kapanış cümlesi]
-
-Kurallar:
-- Başlığı değiştirme.
-- Yanıt en az 2500 karakter uzunluğunda olmalı, tercihen 3500'e yakın. Metni kısa kesme.
-- Yazım dili profesyonel, gazeteci üslubunda olsun.
-- Anahtar kelimeleri şu şekilde metne entegre et: {', '.join(keywords)}
-- Yazının anlamını koru, ama cümleleri özgün hale getir.
-- Her bölümü açıkça etiketle (Lead:, İçerik:, Kapanış:) — bunlar mutlaka görünsün!
-
-Metin:
-\"\"\"
-{limited_text}
-\"\"\"
-"""
-
-    try:
-        logger.info("⏳ OpenAI GPT ile metin yeniden yazılıyor (TR + SEO)...")
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=2048
-        )
-        return response['choices'][0]['message']['content'].strip()
-    except Exception as e:
-        logger.error(f"❌ GPT hatası: {e}")
-        return text[:3990]  # fallback
-
+def paraphrase_turkish(text):
+    logger.info("🔁 Уникализируем текст через mT5...")
+    inputs = tokenizer.encode(text, return_tensors="pt", truncation=True, max_length=512)
+    outputs = model.generate(inputs, max_length=512, num_beams=4, temperature=0.8)
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 # --- Telegram отправка ---
 def send_to_telegram(text):
@@ -79,55 +40,60 @@ def send_to_telegram(text):
             logger.success("✅ Сообщение успешно отправлено в Telegram.")
             return True
         else:
-            logger.error(f"❌ Ошибка при отправке в Telegram: {response.status_code} - {response.text}")
+            logger.error(f"Ошибка при отправке в Telegram: {response.status_code} - {response.text}")
             return False
     except requests.RequestException as e:
-        logger.error(f"❌ Сетевая ошибка при отправке в Telegram: {e}")
+        logger.error(f"Сетевая ошибка при отправке в Telegram: {e}")
         return False
 
-# --- Парсинг главной страницы ---
+# --- Очистка текста под Telegram HTML ---
+def format_for_telegram(text, title, url):
+    clean_text = re.sub(r'</?(h\d|ul|li|div|span|table|thead|tbody|tr|td|style|script)[^>]*>', '', text).strip()
+    message = f"<b>{title}</b>\n\n{clean_text}\n\n<a href='{url}'>Kaynak</a>"
+    return message if len(message) <= 4096 else message[:4090] + "…"
+
+# --- Парсинг Ajansspor ---
 def parse_ajansspor_latest_news(base_url):
-    logger.info(f"Начинаю парсинг сайта: {base_url}")
+    logger.info(f"🔍 Парсинг сайта: {base_url}")
     try:
         response = requests.get(base_url, timeout=15)
         response.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"❌ Ошибка при получении главной страницы: {e}")
+        logger.error(f"Ошибка при получении страницы: {e}")
         return None, None
 
     soup = BeautifulSoup(response.content, 'html.parser')
     first_card = soup.find('div', class_='card')
     if not first_card:
-        logger.warning("❌ Не удалось найти блок с новостью на главной странице.")
+        logger.warning("Не найден блок с новостью.")
         return None, None
 
     link_tag = first_card.find('a', href=True)
     if not link_tag:
-        logger.warning("❌ Не удалось найти ссылку в блоке с новостью.")
+        logger.warning("Не найдена ссылка на новость.")
         return None, None
 
     news_relative_link = link_tag['href']
     full_news_url = f"https://ajansspor.com{news_relative_link}"
-
     return get_news_details(full_news_url)
 
-# --- Получение и переписывание статьи ---
+# --- Парсинг и рерайт одной новости ---
 def get_news_details(news_url):
-    logger.info(f"🔍 Парсим новость: {news_url}")
+    logger.info(f"📄 Получаем статью: {news_url}")
     try:
         news_response = requests.get(news_url, timeout=15)
         news_response.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"❌ Ошибка при получении статьи: {e}")
+        logger.error(f"Ошибка при получении статьи: {e}")
         return None, None
 
-    news_soup = BeautifulSoup(news_response.content, 'html.parser')
+    soup = BeautifulSoup(news_response.content, 'html.parser')
 
-    header_tag = news_soup.find('header', class_='news-header')
+    header_tag = soup.find('header', class_='news-header')
     title = header_tag.get_text(strip=True) if header_tag else "Başlıksız"
 
     article_texts = []
-    article_blocks = news_soup.find_all('div', class_='article-content')
+    article_blocks = soup.find_all('div', class_='article-content')
     for block in article_blocks:
         article_tag = block.find('article')
         if article_tag:
@@ -138,39 +104,39 @@ def get_news_details(news_url):
 
     full_text = "\n".join(article_texts)
 
-    keywords = ["futbol", "Ajansspor", "spor haberleri", "transfer haberleri"]
-    rewritten_text = rewrite_text_with_gpt_tr(full_text, title, keywords)
+    # Рерайт через NLP
+    rewritten_text = paraphrase_turkish(full_text)
 
-    telegram_text = rewritten_text[:3500]
-    message = f"<b>{title}</b>\n\n{telegram_text}\n\n<a href='{news_url}'>Kaynak</a>"
+    # Финальное сообщение
+    message = format_for_telegram(rewritten_text, title, news_url)
     return message, news_url
 
-# --- Главная функция ---
+# --- Основной цикл ---
 def main():
     last_link_file = 'last_link.txt'
     last_sent_link = ""
     try:
         with open(last_link_file, 'r') as f:
             last_sent_link = f.read().strip()
-            logger.info(f"Найдена предыдущая ссылка: {last_sent_link}")
+            logger.info(f"📁 Предыдущая ссылка: {last_sent_link}")
     except FileNotFoundError:
-        logger.info("Файл с последней ссылкой не найден. Первый запуск.")
+        logger.info("📁 Файл last_link.txt не найден. Первый запуск.")
 
     url = "https://ajansspor.com/kategori/16/futbol"
     message, new_link = parse_ajansspor_latest_news(url)
 
     if not new_link:
-        logger.info("Не удалось получить новую ссылку. Завершаю работу.")
+        logger.info("📭 Нет новой новости.")
         return
 
     if new_link == last_sent_link:
-        logger.info("🔥 Новость та же, что и в прошлый раз. Пропускаем.")
+        logger.info("♻️ Та же ссылка, что в прошлый раз. Пропуск.")
     else:
-        logger.info(f"🚀 Найдена новая новость! Ссылка: {new_link}")
+        logger.info(f"🚀 Новая статья найдена: {new_link}")
         if send_to_telegram(message):
             with open(last_link_file, 'w') as f:
                 f.write(new_link)
-            logger.success("Новая ссылка сохранена в файл.")
+            logger.success("✅ Ссылка сохранена.")
 
 if __name__ == "__main__":
     main()
