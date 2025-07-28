@@ -17,8 +17,8 @@ if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     logger.error("❌ Отсутствует TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
     exit()
 
-# --- Настройка OpenAI API ---
-openai.api_key = OPENAI_API_KEY
+# --- OpenAI клиент (v1.x API) ---
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # --- GPT переписывание ---
 def rewrite_text_with_gpt_tr(text, title, keywords=None):
@@ -45,8 +45,7 @@ Metin:
 
     try:
         logger.info(f"⏳ GPT ile yeniden yazılıyor... ({len(text)} karakter)")
-
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.6,
@@ -54,7 +53,7 @@ Metin:
         )
 
         rewritten = response.choices[0].message.content.strip()
-        logger.debug(f"📤 GPT-ответ:\n{rewritten[:1000]}...")  # выводим первые 1000 символов
+        logger.debug(f"📤 GPT-ответ:\n{rewritten[:1000]}...")
 
         if rewritten == text.strip():
             logger.warning("⚠️ GPT вернул тот же текст — возможно, что-то пошло не так.")
