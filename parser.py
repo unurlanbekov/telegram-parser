@@ -1,21 +1,62 @@
-
 import os
 import requests
 from bs4 import BeautifulSoup
-from loguru import logger  # Используем loguru для красивых логов
+from loguru import logger
+import openai
 
-# --- ШАГ 1: Получаем секретные данные из переменных окружения ---
-# GitHub Actions передаст их в скрипт при запуске.
+# --- API ключи ---
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-# Проверяем, что переменные были переданы
+# --- Проверка ключей ---
+if not OPENAI_API_KEY:
+    logger.error("❌ Отсутствует переменная OPENAI_API_KEY.")
+    exit()
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     logger.error("Ошибка: не найдены переменные окружения TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
-    exit() # Выходим, если секреты не найдены
+    exit()
 
-# --- Функции парсера и отправки (без изменений, но с логами) ---
+openai.api_key = OPENAI_API_KEY
 
+# --- GPT: SEO-рерайт на турецком ---
+def rewrite_text_with_gpt_tr(text, title, keywords=None):
+    keywords = keywords or ["futbol", "spor haberleri", "transfer", "Ajansspor"]
+    limited_text = text[:3000]
+
+    prompt = f"""
+Sen bir gazetecisin ve aşağıdaki metni SEO uyumlu ve benzersiz bir şekilde yeniden yazman gerekiyor.
+
+Kurallar:
+- Metnin anlamını bozma.
+- Doğal ve akıcı bir Türkçe kullan.
+- İlk paragrafta özet (lead) ver.
+- Anahtar kelimeleri şu şekilde dahil et: {', '.join(keywords)}
+- Gereksiz uzatma yapma, bilgiye odaklan.
+- Metin bölümlerini kısa paragraflar halinde yap.
+- En sonda kısa bir genel değerlendirme ver.
+
+Başlık: “{title}”
+
+Metin:
+\"\"\"
+{limited_text}
+\"\"\"
+"""
+    try:
+        logger.info("⏳ OpenAI GPT ile metin yeniden yazılıyor (TR + SEO)...")
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=1500
+        )
+        return response['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        logger.error(f"❌ GPT hatası: {e}")
+        return text[:3500]  # fallback
+
+# --- Telegram отправка ---
 def send_to_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
@@ -35,6 +76,7 @@ def send_to_telegram(text):
         logger.error(f"❌ Сетевая ошибка при отправке в Telegram: {e}")
         return False
 
+# --- Парсинг главной страницы ---
 def parse_ajansspor_latest_news(base_url):
     logger.info(f"Начинаю парсинг сайта: {base_url}")
     try:
@@ -60,6 +102,7 @@ def parse_ajansspor_latest_news(base_url):
 
     return get_news_details(full_news_url)
 
+# --- Получение и переписывание статьи ---
 def get_news_details(news_url):
     logger.info(f"🔍 Парсим новость: {news_url}")
     try:
@@ -72,7 +115,7 @@ def get_news_details(news_url):
     news_soup = BeautifulSoup(news_response.content, 'html.parser')
 
     header_tag = news_soup.find('header', class_='news-header')
-    title = header_tag.get_text(strip=True) if header_tag else "Без заголовка"
+    title = header_tag.get_text(strip=True) if header_tag else "Başlıksız"
 
     article_texts = []
     article_blocks = news_soup.find_all('div', class_='article-content')
@@ -85,13 +128,16 @@ def get_news_details(news_url):
                     article_texts.append(text)
 
     full_text = "\n".join(article_texts)
-    message = f"<b>{title}</b>\n\n{full_text[:3500]}\n\n<a href='{news_url}'>Источник</a>"
+
+    keywords = ["futbol", "Ajansspor", "spor haberleri", "transfer haberleri"]
+    rewritten_text = rewrite_text_with_gpt_tr(full_text, title, keywords)
+
+    telegram_text = rewritten_text[:3500]
+    message = f"<b>{title}</b>\n\n{telegram_text}\n\n<a href='{news_url}'>Kaynak</a>"
     return message, news_url
 
-
+# --- Главная функция ---
 def main():
-    # --- ШАГ 2: Проверка на дубликаты через артефакты GitHub ---
-    # Мы будем сохранять ссылку последней новости в файл и передавать его между запусками.
     last_link_file = 'last_link.txt'
     last_sent_link = ""
     try:
@@ -113,7 +159,6 @@ def main():
     else:
         logger.info(f"🚀 Найдена новая новость! Ссылка: {new_link}")
         if send_to_telegram(message):
-            # Сохраняем новую ссылку в файл для следующего запуска
             with open(last_link_file, 'w') as f:
                 f.write(new_link)
             logger.success("Новая ссылка сохранена в файл.")
