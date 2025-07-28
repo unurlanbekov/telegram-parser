@@ -3,27 +3,39 @@ import requests
 from bs4 import BeautifulSoup
 from loguru import logger
 import re
-
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
 
-# --- Telegram конфиг ---
+# --- Чтение токенов ---
+HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+if not HF_TOKEN:
+    logger.error("❌ Отсутствует HUGGINGFACE_TOKEN.")
+    exit()
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-    logger.error("❌ Отсутствуют переменные окружения TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
+    logger.error("❌ Отсутствует TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
     exit()
 
-# --- Загрузка NLP-модели для турецкого рерайта ---
-logger.info("📦 Загружаем модель paraphraser (mT5 Turkish)...")
-tokenizer = AutoTokenizer.from_pretrained("boun-tabi/mT5-paraphraser-turkish")
-model = AutoModelForSeq2SeqLM.from_pretrained("boun-tabi/mT5-paraphraser-turkish")
+# --- Загрузка модели Hugging Face ---
+logger.info("📦 Загружается модель paraphraser (mT5 Turkish)...")
+tokenizer = AutoTokenizer.from_pretrained(
+    "boun-tabi/mT5-paraphraser-turkish",
+    use_auth_token=HF_TOKEN
+)
+model = AutoModelForSeq2SeqLM.from_pretrained(
+    "boun-tabi/mT5-paraphraser-turkish",
+    use_auth_token=HF_TOKEN
+)
 
+# --- Функция рерайта ---
 def paraphrase_turkish(text):
     logger.info("🔁 Уникализируем текст через mT5...")
-    inputs = tokenizer.encode(text, return_tensors="pt", truncation=True, max_length=512)
-    outputs = model.generate(inputs, max_length=512, num_beams=4, temperature=0.8)
+    input_text = text.strip().replace("\n", " ")
+    prefix = "paraphrase: "
+    inputs = tokenizer.encode(prefix + input_text, return_tensors="pt", max_length=512, truncation=True)
+    outputs = model.generate(inputs, max_length=512, num_beams=5, temperature=0.9)
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 # --- Telegram отправка ---
@@ -40,13 +52,13 @@ def send_to_telegram(text):
             logger.success("✅ Сообщение успешно отправлено в Telegram.")
             return True
         else:
-            logger.error(f"Ошибка при отправке в Telegram: {response.status_code} - {response.text}")
+            logger.error(f"❌ Ошибка при отправке в Telegram: {response.status_code} - {response.text}")
             return False
     except requests.RequestException as e:
-        logger.error(f"Сетевая ошибка при отправке в Telegram: {e}")
+        logger.error(f"❌ Сетевая ошибка при отправке в Telegram: {e}")
         return False
 
-# --- Очистка текста под Telegram HTML ---
+# --- Telegram форматирование ---
 def format_for_telegram(text, title, url):
     clean_text = re.sub(r'</?(h\d|ul|li|div|span|table|thead|tbody|tr|td|style|script)[^>]*>', '', text).strip()
     message = f"<b>{title}</b>\n\n{clean_text}\n\n<a href='{url}'>Kaynak</a>"
@@ -59,36 +71,35 @@ def parse_ajansspor_latest_news(base_url):
         response = requests.get(base_url, timeout=15)
         response.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"Ошибка при получении страницы: {e}")
+        logger.error(f"❌ Ошибка при получении страницы: {e}")
         return None, None
 
     soup = BeautifulSoup(response.content, 'html.parser')
     first_card = soup.find('div', class_='card')
     if not first_card:
-        logger.warning("Не найден блок с новостью.")
+        logger.warning("❌ Не найден блок с новостью.")
         return None, None
 
     link_tag = first_card.find('a', href=True)
     if not link_tag:
-        logger.warning("Не найдена ссылка на новость.")
+        logger.warning("❌ Не найдена ссылка на новость.")
         return None, None
 
     news_relative_link = link_tag['href']
     full_news_url = f"https://ajansspor.com{news_relative_link}"
     return get_news_details(full_news_url)
 
-# --- Парсинг и рерайт одной новости ---
+# --- Получение и рерайт статьи ---
 def get_news_details(news_url):
     logger.info(f"📄 Получаем статью: {news_url}")
     try:
         news_response = requests.get(news_url, timeout=15)
         news_response.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"Ошибка при получении статьи: {e}")
+        logger.error(f"❌ Ошибка при получении статьи: {e}")
         return None, None
 
     soup = BeautifulSoup(news_response.content, 'html.parser')
-
     header_tag = soup.find('header', class_='news-header')
     title = header_tag.get_text(strip=True) if header_tag else "Başlıksız"
 
@@ -103,11 +114,7 @@ def get_news_details(news_url):
                     article_texts.append(text)
 
     full_text = "\n".join(article_texts)
-
-    # Рерайт через NLP
     rewritten_text = paraphrase_turkish(full_text)
-
-    # Финальное сообщение
     message = format_for_telegram(rewritten_text, title, news_url)
     return message, news_url
 
@@ -118,7 +125,7 @@ def main():
     try:
         with open(last_link_file, 'r') as f:
             last_sent_link = f.read().strip()
-            logger.info(f"📁 Предыдущая ссылка: {last_sent_link}")
+            logger.info(f"📁 Последняя ссылка: {last_sent_link}")
     except FileNotFoundError:
         logger.info("📁 Файл last_link.txt не найден. Первый запуск.")
 
@@ -126,11 +133,11 @@ def main():
     message, new_link = parse_ajansspor_latest_news(url)
 
     if not new_link:
-        logger.info("📭 Нет новой новости.")
+        logger.info("📭 Нет новой статьи.")
         return
 
     if new_link == last_sent_link:
-        logger.info("♻️ Та же ссылка, что в прошлый раз. Пропуск.")
+        logger.info("♻️ Та же статья, что и раньше. Пропускаем.")
     else:
         logger.info(f"🚀 Новая статья найдена: {new_link}")
         if send_to_telegram(message):
