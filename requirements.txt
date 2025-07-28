@@ -1,9 +1,6 @@
-
-torch
 sentencepiece
 requests
 beautifulsoup4
 loguru
-openai==0.28.1
-torch
-sentencepiece
+openai>=1.1.0
+
