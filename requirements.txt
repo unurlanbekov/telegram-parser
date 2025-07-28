@@ -2,3 +2,6 @@ requests
 beautifulsoup4
 loguru
 openai
+transformers
+torch
+sentencepiece
