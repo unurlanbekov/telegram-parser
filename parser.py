@@ -21,8 +21,9 @@ openai.api_key = OPENAI_API_KEY
 def rewrite_text_with_gpt_tr(text, title, keywords=None):
     keywords = keywords or ["futbol", "spor haberleri", "transfer", "a spor izle", "a spor canlı izle", "son dakika spor", "a spor canlı", "Canlı maç izle", "spor ekranı"]
     limited_text = text[:4000]
-    
-prompt = f"""
+
+
+    prompt = f"""
 Aşağıdaki haberi %100 özgün, SEO uyumlu ve yapılandırılmış şekilde yeniden yazmanı istiyorum.
 
 Çıktı formatı **kesinlikle** aşağıdaki gibi olmalı:
@@ -49,19 +50,19 @@ Metin:
 \"\"\"
 """
 
-
     try:
         logger.info("⏳ OpenAI GPT ile metin yeniden yazılıyor (TR + SEO)...")
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=1500
+            temperature=0.5,
+            max_tokens=2048
         )
         return response['choices'][0]['message']['content'].strip()
     except Exception as e:
         logger.error(f"❌ GPT hatası: {e}")
-        return text[:3500]  # fallback
+        return text[:3990]  # fallback
+
 
 # --- Telegram отправка ---
 def send_to_telegram(text):
