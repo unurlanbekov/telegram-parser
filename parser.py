@@ -21,28 +21,29 @@ openai.api_key = OPENAI_API_KEY
 
 # --- GPT: SEO-рерайт на турецком ---
 def rewrite_text_with_gpt_tr(text, title, keywords=None):
-    keywords = keywords or ["futbol", "spor haberleri", "transfer", "Ajansspor"]
+    keywords = keywords or ["futbol", "spor haberleri", "transfer", "a spor canlı", "spor haberleri", "son dakika spor", "a spor canlı izle", "a spor izle", "Canlı maç izle"]
     limited_text = text[:3000]
 
-    prompt = f"""
-Sen bir gazetecisin ve aşağıdaki metni SEO uyumlu ve benzersiz bir şekilde yeniden yazman gerekiyor.
+        prompt = f"""
+Sen deneyimli bir spor editörüsün. Aşağıdaki haber metnini yeniden yazmanı istiyorum. Amacın, metni SEO uyumlu, %100 özgün ve tıklama alabilecek şekilde yeniden ifade etmek.
 
 Kurallar:
-- Metnin anlamını bozma.
-- Doğal ve akıcı bir Türkçe kullan.
-- İlk paragrafta özet (lead) ver.
-- Anahtar kelimeleri şu şekilde dahil et: {', '.join(keywords)}
-- Gereksiz uzatma yapma, bilgiye odaklan.
-- Metin bölümlerini kısa paragraflar halinde yap.
-- En sonda kısa bir genel değerlendirme ver.
+- Anlamı koru, ama ifadeyi tamamen değiştir.
+- İlk paragraf (lead) dikkat çekici ve özetleyici olsun — kullanıcıyı okumaya teşvik etsin.
+- Anahtar kelimeleri ({', '.join(keywords)}) doğal şekilde metne serpiştir.
+- Gereksiz bilgi ekleme, ama önemli detayları ön plana çıkar.
+- Başlığı koru, ama metni daha akıcı, haber diliyle ve paragraflara ayrılmış şekilde yaz.
+- Uzunluğu KISALTMA — mümkün olduğunca tüm içeriği kullan. Her bilgiyi yeniden yaz, ama çıkartma.
+- Sonunda kısa bir değerlendirme veya gelişme beklentisiyle kapanış yap.
 
 Başlık: “{title}”
 
-Metin:
+Yeniden yazılacak haber:
 \"\"\"
 {limited_text}
 \"\"\"
 """
+
     try:
         logger.info("⏳ OpenAI GPT ile metin yeniden yazılıyor (TR + SEO)...")
         response = openai.ChatCompletion.create(
