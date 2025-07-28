@@ -164,5 +164,8 @@ def main():
                 f.write(new_link)
             logger.success("Новая ссылка сохранена в файл.")
 
+
 if __name__ == "__main__":
-    main()
+    dummy_text = "Galatasaray, yeni sezon öncesi transfer çalışmalarını hızlandırdı. Takımın gündeminde olan yıldız futbolcu ile prensipte anlaşma sağlandı. Taraftarlar büyük heyecan içinde bekliyor."
+    dummy_title = "Galatasaray, Yeni Transferini Açıkladı"
+    print(rewrite_text_with_gpt_tr(dummy_text, dummy_title))
