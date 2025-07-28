@@ -4,98 +4,86 @@ from bs4 import BeautifulSoup
 from loguru import logger
 import openai
 
-
+# --- API ключи ---
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-
+# --- Проверка ключей ---
 if not OPENAI_API_KEY:
     logger.error("❌ Отсутствует переменная OPENAI_API_KEY.")
     exit()
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-    logger.error("❌ Отсутствуют переменные TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
+    logger.error("Ошибка: не найдены переменные окружения TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
     exit()
 
 openai.api_key = OPENAI_API_KEY
-
-# --- Разделение текста на части ---
-def split_text(text, chunk_size=3000):
-    return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
-
-
 def rewrite_text_with_gpt_tr(text, title, keywords=None):
     keywords = keywords or ["futbol", "spor haberleri", "transfer", "a spor izle", "a spor canlı izle", "son dakika spor", "a spor canlı", "Canlı maç izle", "spor ekranı"]
-    chunks = split_text(text)
-    rewritten_chunks = []
+    limited_text = text[:4000]
 
-    for i, chunk in enumerate(chunks):
-        prompt = f"""
-        Перепиши этот фрагмент текста (часть {i+1}) в уникальном, SEO-оптимизированном стиле. Сохрани смысл, используй ключевые слова: {', '.join(keywords)}. Формат: только текст, без заголовков.
-        Текст:
-        \"\"\"
-        {chunk}
-        \"\"\"
-        """
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4-turbo",  # или gpt-3.5-turbo
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                max_tokens=4096
-            )
-            rewritten_chunks.append(response['choices'][0]['message']['content'].strip())
-        except Exception as e:
-            logger.error(f"❌ GPT ошибка в части {i+1}: {e}")
-            return text[:3990]
 
-    full_text = "\n\n".join(rewritten_chunks)
+    prompt = f"""
+Aşağıdaki haberi %100 özgün, SEO uyumlu ve yapılandırılmış şekilde yeniden yazmanı istiyorum.
 
-    final_prompt = f"""
-    Структурируй текст в формате:
-    Başlık: {title}
-    Lead: [Краткий анонс, 100–150 слов]
-    İçerik: [Текст с подзаголовками, 4–6 параграфов]
-    Kapanış: [Вывод, 50–100 слов]
+Çıktı formatı **kesinlikle** aşağıdaki gibi olmalı:
 
-    Используй ключевые слова: {', '.join(keywords)}.
-    Текст:
-    \"\"\"
-    {full_text}
-    \"\"\"
-    """
+Başlık: {title}
+
+Lead: [Haberin özeti — dikkat çekici, tıklamaya teşvik edici bir paragraf]
+
+İçerik:
+[Haberin detayları — paragraflara bölünmüş, doğal ve akıcı bir anlatım]
+
+Kapanış: [Genel bir değerlendirme veya gelişme beklentisiyle kapanış cümlesi]
+
+Kurallar:
+- Başlığı değiştirme.
+- Yanıt en az 2500 karakter uzunluğunda olmalı, tercihen 3500'e yakın. Metni kısa kesme.
+- Yazım dili profesyonel, gazeteci üslubunda olsun.
+- Anahtar kelimeleri şu şekilde metne entegre et: {', '.join(keywords)}
+- Yazının anlamını koru, ama cümleleri özgün hale getir.
+- Her bölümü açıkça etiketle (Lead:, İçerik:, Kapanış:) — bunlar mutlaka görünsün!
+
+Metin:
+\"\"\"
+{limited_text}
+\"\"\"
+"""
+
     try:
+        logger.info("⏳ OpenAI GPT ile metin yeniden yazılıyor (TR + SEO)...")
         response = openai.ChatCompletion.create(
-            model="gpt-4-turbo",
-            messages=[{"role": "user", "content": final_prompt}],
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=4096
+            max_tokens=2048
         )
         return response['choices'][0]['message']['content'].strip()
     except Exception as e:
-        logger.error(f"❌ GPT ошибка при финальной обработке: {e}")
-        return full_text
+        logger.error(f"❌ GPT hatası: {e}")
+        return text[:3990]  # fallback
+
 
 # --- Telegram отправка ---
 def send_to_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    chunks = split_text(text, 4000)
-    for chunk in chunks:
-        payload = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": chunk,
-            "parse_mode": "HTML"
-        }
-        try:
-            response = requests.post(url, data=payload, timeout=10)
-            if response.status_code != 200:
-                logger.error(f"❌ Ошибка при отправке в Telegram: {response.status_code} - {response.text}")
-                return False
-        except requests.RequestException as e:
-            logger.error(f"❌ Сетевая ошибка при отправке в Telegram: {e}")
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    try:
+        response = requests.post(url, data=payload, timeout=10)
+        if response.status_code == 200:
+            logger.success("✅ Сообщение успешно отправлено в Telegram.")
+            return True
+        else:
+            logger.error(f"❌ Ошибка при отправке в Telegram: {response.status_code} - {response.text}")
             return False
-    logger.success("✅ Сообщение успешно отправлено в Telegram.")
-    return True
+    except requests.RequestException as e:
+        logger.error(f"❌ Сетевая ошибка при отправке в Telegram: {e}")
+        return False
 
 # --- Парсинг главной страницы ---
 def parse_ajansspor_latest_news(base_url):
@@ -110,7 +98,7 @@ def parse_ajansspor_latest_news(base_url):
     soup = BeautifulSoup(response.content, 'html.parser')
     first_card = soup.find('div', class_='card')
     if not first_card:
-        logger.warning("❌ Не удалось найти блок с новостью.")
+        logger.warning("❌ Не удалось найти блок с новостью на главной странице.")
         return None, None
 
     link_tag = first_card.find('a', href=True)
@@ -120,6 +108,7 @@ def parse_ajansspor_latest_news(base_url):
 
     news_relative_link = link_tag['href']
     full_news_url = f"https://ajansspor.com{news_relative_link}"
+
     return get_news_details(full_news_url)
 
 # --- Получение и переписывание статьи ---
@@ -134,21 +123,20 @@ def get_news_details(news_url):
 
     news_soup = BeautifulSoup(news_response.content, 'html.parser')
 
-    header_tag = news_soup.find('header', class_='news-header') or news_soup.find('h1')
+    header_tag = news_soup.find('header', class_='news-header')
     title = header_tag.get_text(strip=True) if header_tag else "Başlıksız"
 
     article_texts = []
-    content_blocks = news_soup.find_all(['div', 'article'], class_=['article-content', 'content', 'news-body'])
-    for block in content_blocks:
-        for p in block.find_all('p'):
-            text = p.get_text(strip=True)
-            if text:
-                article_texts.append(text)
+    article_blocks = news_soup.find_all('div', class_='article-content')
+    for block in article_blocks:
+        article_tag = block.find('article')
+        if article_tag:
+            for p in article_tag.find_all('p'):
+                text = p.get_text(strip=True)
+                if text:
+                    article_texts.append(text)
 
     full_text = "\n".join(article_texts)
-    if not full_text:
-        logger.warning("❌ Не удалось извлечь текст статьи.")
-        return None, None
 
     keywords = ["futbol", "Ajansspor", "spor haberleri", "transfer haberleri"]
     rewritten_text = rewrite_text_with_gpt_tr(full_text, title, keywords)
