@@ -39,6 +39,7 @@ Kapanış: [Genel bir değerlendirme veya gelişme beklentisiyle kapanış cüml
 
 Kurallar:
 - Başlığı değiştirme.
+- Yanıt en az 2500 karakter uzunluğunda olmalı, tercihen 3500'e yakın. Metni kısa kesme.
 - Yazım dili profesyonel, gazeteci üslubunda olsun.
 - Anahtar kelimeleri şu şekilde metne entegre et: {', '.join(keywords)}
 - Yazının anlamını koru, ama cümleleri özgün hale getir.
