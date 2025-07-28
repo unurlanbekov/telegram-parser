@@ -1,3 +1,6 @@
+transformers
+torch
+sentencepiece
 requests
 beautifulsoup4
 loguru
