@@ -19,17 +19,17 @@ if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
 
 openai.api_key = OPENAI_API_KEY
 
-# --- GPT: SEO-рерайт на турецком ---
 def rewrite_text_with_gpt_tr(text, title, keywords=None):
-    keywords = keywords or ["futbol", "spor haberleri", "transfer", "a spor canlı", "spor haberleri", "son dakika spor", "a spor canlı izle", "a spor izle", "Canlı maç izle"]
-    limited_text = text[:3000]
+    keywords = keywords or ["futbol", "spor haberleri", "transfer", "Ajansspor"]
+    limited_text = text[:4000]
 
-        prompt = f"""
-Sen deneyimli bir spor editörüsün. Aşağıdaki haber metnini yeniden yazmanı istiyorum. Amacın, metni SEO uyumlu, %100 özgün ve tıklama alabilecek şekilde yeniden ifade etmek.
+    prompt = f"""
+Sen bir gazetecisin ve aşağıdaki metni SEO uyumlu ve benzersiz bir şekilde yeniden yazman gerekiyor.
 
 Kurallar:
-- Anlamı koru, ama ifadeyi tamamen değiştir.
-- İlk paragraf (lead) dikkat çekici ve özetleyici olsun — kullanıcıyı okumaya teşvik etsin.
+- Metnin anlamını bozma.
+- Doğal ve akıcı bir Türkçe kullan.
+- İlk paragrafta özet (lead) ver.
 - Anahtar kelimeleri ({', '.join(keywords)}) doğal şekilde metne serpiştir.
 - Gereksiz bilgi ekleme, ama önemli detayları ön plana çıkar.
 - Başlığı koru, ama metni daha akıcı, haber diliyle ve paragraflara ayrılmış şekilde yaz.
@@ -43,6 +43,7 @@ Yeniden yazılacak haber:
 {limited_text}
 \"\"\"
 """
+
 
     try:
         logger.info("⏳ OpenAI GPT ile metin yeniden yazılıyor (TR + SEO)...")
