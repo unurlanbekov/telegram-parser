@@ -1,11 +1,9 @@
-transformers
+
 torch
 sentencepiece
 requests
 beautifulsoup4
 loguru
-openai
-transformers
-protobuf>=3.20.0
+openai==0.28.1
 torch
 sentencepiece
