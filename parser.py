@@ -45,12 +45,14 @@ Metin:
 
     try:
         logger.info(f"⏳ GPT ile yeniden yazılıyor... ({len(text)} karakter)")
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.6,
-            max_tokens=3000
-        )
+  openai.api_key = OPENAI_API_KEY
+
+response = openai.ChatCompletion.create(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": prompt}],
+    temperature=0.6,
+    max_tokens=3000
+)
         rewritten = response.choices[0].message.content.strip()
         logger.success("✅ GPT успешно переписал текст.")
         return rewritten
