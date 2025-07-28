@@ -18,7 +18,10 @@ if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     exit()
 
 openai.api_key = OPENAI_API_KEY
-
+def rewrite_text_with_gpt_tr(text, title, keywords=None):
+    keywords = keywords or ["futbol", "spor haberleri", "transfer", "a spor izle", "a spor canlı izle", "son dakika spor", "a spor canlı", "Canlı maç izle", "spor ekranı"]
+    limited_text = text[:4000]
+    
     prompt = f"""
 Sen deneyimli bir haber editörüsün. Aşağıdaki spor haberini SEO uyumlu, %100 özgün ve yapısal olarak düzenlenmiş şekilde yeniden yazmanı istiyorum.
 
@@ -42,8 +45,6 @@ Yeniden yazılacak metin:
 {limited_text}
 \"\"\"
 """
-
-
 
     try:
         logger.info("⏳ OpenAI GPT ile metin yeniden yazılıyor (TR + SEO)...")
