@@ -9,7 +9,7 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-    logger.error("❌ Отсутствует TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
+    logger.error(" Отсутствует TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
     exit()
 
 # --- Telegram отправка ---
@@ -26,10 +26,10 @@ def send_to_telegram(text):
             logger.success("✅ Сообщение успешно отправлено в Telegram.")
             return True
         else:
-            logger.error(f"❌ Telegram ошибка: {response.status_code} - {response.text}")
+            logger.error(f" Telegram ошибка: {response.status_code} - {response.text}")
             return False
     except requests.RequestException as e:
-        logger.error(f"❌ Telegram сеть: {e}")
+        logger.error(f" Telegram сеть: {e}")
         return False
 
 # --- Telegram формат ---
@@ -45,18 +45,18 @@ def parse_ajansspor_latest_news(base_url):
         response = requests.get(base_url, timeout=15)
         response.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"❌ Ошибка загрузки страницы: {e}")
+        logger.error(f" Ошибка загрузки страницы: {e}")
         return None, None
 
     soup = BeautifulSoup(response.content, 'html.parser')
     first_card = soup.find('div', class_='card')
     if not first_card:
-        logger.warning("❌ Не найден блок новости.")
+        logger.warning(" Не найден блок новости.")
         return None, None
 
     link_tag = first_card.find('a', href=True)
     if not link_tag:
-        logger.warning("❌ Не найдена ссылка.")
+        logger.warning(" Не найдена ссылка.")
         return None, None
 
     news_link = f"https://ajansspor.com{link_tag['href']}"
@@ -69,7 +69,7 @@ def get_news_details(news_url):
         resp = requests.get(news_url, timeout=15)
         resp.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"❌ Ошибка статьи: {e}")
+        logger.error(f" Ошибка статьи: {e}")
         return None, None
 
     soup = BeautifulSoup(resp.content, 'html.parser')
@@ -81,20 +81,20 @@ def get_news_details(news_url):
     for block in soup.find_all('div', class_='article-content'):
         detail = block.find('div', class_='news-detail')
         if detail:
-            # Парсим <h2>
+            # Парсим <h2> с отступом
             h2_tag = detail.find('h2')
             if h2_tag:
                 h2_text = h2_tag.get_text(strip=True)
                 if h2_text:
-                    content.append(h2_text)
+                    content.append(f"{h2_text}\n")  # отступ после заголовка
 
-            # Парсим <p> внутри <article>
+            # Парсим <p> внутри <article> с отступом
             article_tag = detail.find('article')
             if article_tag:
                 for p in article_tag.find_all('p'):
                     p_text = p.get_text(strip=True)
                     if p_text:
-                        content.append(p_text)
+                        content.append(f"{p_text}\n")  # отступ после абзаца
 
     full_text = "\n".join(content)
 
@@ -130,7 +130,7 @@ def main():
         if send_to_telegram(message):
             with open(last_link_file, 'w') as f:
                 f.write(new_link)
-            logger.success("✅ Ссылка сохранена.")
+            logger.success(" Ссылка сохранена.")
 
 if __name__ == "__main__":
     main()
