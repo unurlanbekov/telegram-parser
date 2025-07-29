@@ -2,69 +2,15 @@ import os
 import requests
 from bs4 import BeautifulSoup
 from loguru import logger
-import openai
 import re
 
 # --- API ключи ---
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-if not OPENAI_API_KEY:
-    logger.error("❌ Отсутствует переменная OPENAI_API_KEY.")
-    exit()
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     logger.error("❌ Отсутствует TELEGRAM_TOKEN или TELEGRAM_CHAT_ID.")
     exit()
-
-# --- OpenAI клиент (v1.x API) ---
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
-# --- GPT переписывание ---
-def rewrite_text_with_gpt_tr(text, title, keywords=None):
-    keywords = keywords or [
-        "futbol", "spor haberleri", "transfer", "a spor izle", "a spor canlı izle",
-        "son dakika spor", "a spor canlı", "Canlı maç izle", "spor ekranı"
-    ]
-
-    prompt = f"""
-Sen profesyonel bir Türk spor gazetecisisin. Aşağıdaki haberi %100 özgün, SEO uyumlu, doğal ve etkileyici bir şekilde yeniden yazmanı istiyorum.
-
-Kurallar:
-- Lead, İçerik ve Kapanış başlıkları olsun.
-- Başlık: {title}
-- Anahtar kelimeler şu şekilde doğal biçimde geçmeli: {', '.join(keywords)}
-- Minimum 2500 karakter üret, tercihen 3500'e yakın.
-- Etiketleri (Lead:, İçerik:, Kapanış:) koru.
-
-Metin:
-\"\"\"
-{text.strip()}
-\"\"\"
-"""
-
-    try:
-        logger.info(f"⏳ GPT ile yeniden yazılıyor... ({len(text)} karakter)")
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.6,
-            max_tokens=3000
-        )
-
-        rewritten = response.choices[0].message.content.strip()
-        logger.debug(f"📤 GPT-ответ:\n{rewritten[:1000]}...")
-
-        if rewritten == text.strip():
-            logger.warning("⚠️ GPT вернул тот же текст — возможно, что-то пошло не так.")
-        else:
-            logger.success("✅ GPT успешно переписал текст.")
-
-        return rewritten
-
-    except Exception as e:
-        logger.error(f"❌ GPT hatası: {e}")
-        return "[GPT HATASI] " + text[:3500]
 
 # --- Telegram отправка ---
 def send_to_telegram(text):
@@ -87,8 +33,8 @@ def send_to_telegram(text):
         return False
 
 # --- Telegram формат ---
-def format_for_telegram(gpt_text, title, url):
-    clean = re.sub(r'</?(h\d|div|span|table|tr|td|style|script)[^>]*>', '', gpt_text).strip()
+def format_for_telegram(text, title, url):
+    clean = re.sub(r'</?(h\d|div|span|table|tr|td|style|script)[^>]*>', '', text).strip()
     message = f"<b>{title}</b>\n\n{clean}\n\n<a href='{url}'>Kaynak</a>"
     return message[:4096]
 
@@ -116,7 +62,7 @@ def parse_ajansspor_latest_news(base_url):
     news_link = f"https://ajansspor.com{link_tag['href']}"
     return get_news_details(news_link)
 
-# --- Получение и переписывание статьи ---
+# --- Получение и парсинг статьи ---
 def get_news_details(news_url):
     logger.info(f"📄 Получение статьи: {news_url}")
     try:
@@ -134,6 +80,12 @@ def get_news_details(news_url):
     for block in soup.find_all('div', class_='article-content'):
         article = block.find('article')
         if article:
+            # Парсим <h2>
+            for h2 in article.find_all('h2'):
+                text = h2.get_text(strip=True)
+                if text:
+                    content.append(text)
+            # Парсим <p>
             for p in article.find_all('p'):
                 text = p.get_text(strip=True)
                 if text:
@@ -145,8 +97,7 @@ def get_news_details(news_url):
         logger.warning("❌ Статья пуста.")
         return None, None
 
-    rewritten = rewrite_text_with_gpt_tr(full_text, title)
-    message = format_for_telegram(rewritten, title, news_url)
+    message = format_for_telegram(full_text, title, news_url)
     return message, news_url
 
 # --- Главная логика ---
