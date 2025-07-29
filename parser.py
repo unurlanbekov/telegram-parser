@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 import re
 
-# --- API ключи ---
+# --- Telegram API ключи ---
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
@@ -38,7 +38,7 @@ def format_for_telegram(text, title, url):
     message = f"<b>{title}</b>\n\n{clean}\n\n<a href='{url}'>Kaynak</a>"
     return message[:4096]
 
-# --- Парсинг Ajansspor ---
+# --- Парсинг главной страницы ---
 def parse_ajansspor_latest_news(base_url):
     logger.info(f"🔍 Парсинг: {base_url}")
     try:
@@ -77,19 +77,24 @@ def get_news_details(news_url):
     title = title_tag.get_text(strip=True) if title_tag else "Başlıksız"
 
     content = []
+
     for block in soup.find_all('div', class_='article-content'):
-        article = block.find('article')
-        if article:
+        detail = block.find('div', class_='news-detail')
+        if detail:
             # Парсим <h2>
-            for h2 in article.find_all('h2'):
-                text = h2.get_text(strip=True)
-                if text:
-                    content.append(text)
-            # Парсим <p>
-            for p in article.find_all('p'):
-                text = p.get_text(strip=True)
-                if text:
-                    content.append(text)
+            h2_tag = detail.find('h2')
+            if h2_tag:
+                h2_text = h2_tag.get_text(strip=True)
+                if h2_text:
+                    content.append(h2_text)
+
+            # Парсим <p> внутри <article>
+            article_tag = detail.find('article')
+            if article_tag:
+                for p in article_tag.find_all('p'):
+                    p_text = p.get_text(strip=True)
+                    if p_text:
+                        content.append(p_text)
 
     full_text = "\n".join(content)
 
