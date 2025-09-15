@@ -5,13 +5,12 @@ on:
     - cron: '0 */3 * * *'  # запуск каждые 3 часа
   workflow_dispatch:        # ручной запуск из Actions
 
-# НУЖНО: дать разрешение на запись, чтобы коммитить last_links.json обратно в репозиторий
 permissions:
-  contents: write
+  contents: write           # нужно, чтобы коммитить last_links.json обратно в репозиторий
 
 concurrency:
   group: news-parser
-  cancel-in-progress: true  # чтобы не шли параллельно, если предыдущий ещё не закончился
+  cancel-in-progress: true  # не запускать параллельно
 
 jobs:
   parse-and-send:
@@ -41,16 +40,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: python parser.py
+      - name: Run Python parser
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           # Если не используешь эти токены — можешь удалить:
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          # ВАЖНО: исправь имя файла, если у тебя он называется иначе
-          python parser_multi.py
+        run: python parser.py
 
       - name: Commit & push updated state (last_links.json)
         run: |
