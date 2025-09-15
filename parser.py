@@ -12,7 +12,12 @@ from loguru import logger
 # -------- Настройки ----------
 STATE_FILE = "last_links.json"
 REQUEST_TIMEOUT = 15
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8,ru;q=0.7",
+    "Connection": "keep-alive",
+}
 
 # -------- Telegram ----------
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
@@ -53,7 +58,8 @@ def format_for_telegram(text: str, title: str, url: str) -> str:
         f"Источник: {url}\n"
         f"<a href='{url}'>Kaynak</a>"
     )
-    return message[:4096]  # лимит Telegram
+    # Telegram лимит 4096 символов
+    return message[:4096]
 
 # -------- Состояние ----------
 def load_state() -> Dict[str, str]:
@@ -67,11 +73,14 @@ def load_state() -> Dict[str, str]:
         return {}
 
 def save_state(state: Dict[str, str]) -> None:
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Не удалось записать {STATE_FILE}: {e}")
 
 # =======================
-# Ajansspor (как у тебя)
+# Ajansspor
 # =======================
 def parse_ajansspor_latest_news(base_url: str) -> Optional[Tuple[str, str]]:
     logger.info(f"🔍 Ajansspor парсинг: {base_url}")
@@ -79,21 +88,31 @@ def parse_ajansspor_latest_news(base_url: str) -> Optional[Tuple[str, str]]:
         response = requests.get(base_url, timeout=REQUEST_TIMEOUT, headers=HEADERS)
         response.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f" Ошибка загрузки страницы: {e}")
+        logger.error(f"Ajansspor: ошибка загрузки страницы: {e}")
         return None
 
     soup = BeautifulSoup(response.content, 'html.parser')
-    first_card = soup.find('div', class_='card')
+
+    # Пытаемся найти первую карточку/слайд с новостью
+    first_card = soup.find('div', class_='card') \
+                 or soup.find('article') \
+                 or soup.select_one('.news-card, .slider-item, .list-item')
+
     if not first_card:
-        logger.warning(" Ajansspor: не найден блок новости.")
+        logger.warning("Ajansspor: не найден блок новости.")
         return None
 
     link_tag = first_card.find('a', href=True)
     if not link_tag:
-        logger.warning(" Ajansspor: не найдена ссылка.")
+        logger.warning("Ajansspor: не найдена ссылка.")
         return None
 
-    news_link = f"https://ajansspor.com{link_tag['href']}"
+    href = link_tag['href']
+    if href.startswith('http'):
+        news_link = href
+    else:
+        news_link = f"https://ajansspor.com{href}"
+
     details = get_ajansspor_news_details(news_link)
     if not details:
         return None
@@ -106,32 +125,39 @@ def get_ajansspor_news_details(news_url: str) -> Optional[Tuple[str, str]]:
         resp = requests.get(news_url, timeout=REQUEST_TIMEOUT, headers=HEADERS)
         resp.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f" Ошибка статьи: {e}")
+        logger.error(f"Ajansspor: ошибка статьи: {e}")
         return None
 
     soup = BeautifulSoup(resp.content, 'html.parser')
-    title_tag = soup.find('header', class_='news-header')
+
+    # Заголовок
+    title_tag = soup.find('header', class_='news-header') \
+                or soup.find('h1') \
+                or soup.find('title')
     title = title_tag.get_text(strip=True) if title_tag else "Başlıksız"
 
+    # Контент
     content: List[str] = []
-    for block in soup.find_all('div', class_='article-content'):
-        detail = block.find('div', class_='news-detail')
-        if not detail:
-            continue
-
-        # все заголовки h-тегов внутри detail
-        for h in detail.find_all(re.compile(r'^h[1-6]$')):
+    # Основные контейнеры, защищаемся от вариаций верстки
+    for block in soup.select('div.article-content, div.news-detail, article, main, section'):
+        # Заголовки
+        for h in block.find_all(re.compile(r'^h[1-6]$')):
             t = h.get_text(strip=True)
             if t:
                 content.append(t)
 
-        # абзацы внутри <article>
-        article_tag = detail.find('article')
-        if article_tag:
-            for p in article_tag.find_all('p'):
-                p_text = p.get_text(strip=True)
-                if p_text:
-                    content.append(p_text)
+        # Абзацы
+        for p in block.find_all('p'):
+            p_text = p.get_text(" ", strip=True)
+            if p_text:
+                content.append(p_text)
+
+    # Фолбэк — все <p>
+    if not content:
+        for p in soup.find_all('p'):
+            t = p.get_text(" ", strip=True)
+            if t:
+                content.append(t)
 
     full_text = "\n\n".join(content).strip()
     if not full_text:
@@ -148,11 +174,19 @@ AA_SPORTS_URL = "https://www.aa.com.tr/tr/spor"
 AA_SPORTS_RSS = "https://www.aa.com.tr/tr/rss/default?cat=spor"
 
 AA_BLACKLIST_SNIPPETS = [
-    "AA'nın WhatsApp kanallarına",  # промо-блок
+    "AA'nın WhatsApp kanallarına",
     "Bu haberi paylaşın",
     "AA Haber Akış Sistemi (HAS)",
     "Anadolu Ajansı web sitesinde",
 ]
+
+# Разрешаем абсолютные и относительные ссылки, несколько «спорт»-разделов
+AA_INDEX_LINK_RE = re.compile(
+    r"^(?:https?://(?:www\.)?aa\.com\.tr)?"
+    r"/tr/(?:spor|futbol|basketbol|voleybol|dunyadan-spor)"
+    r"/[a-z0-9\-]+/\d+/?$",
+    re.I
+)
 
 def _aa_rss_latest_link() -> Optional[str]:
     """Берём самую свежую ссылку из RSS спорта AA (если доступно)."""
@@ -163,10 +197,14 @@ def _aa_rss_latest_link() -> Optional[str]:
         logger.error(f"AA RSS загрузка: {e}")
         return None
 
+    # RSS у AA может быть в XML или Atom-вариации
     soup = BeautifulSoup(r.content, "xml")
+
     item = soup.find("item")
     if item and item.find("link"):
-        return item.find("link").get_text(strip=True)
+        link = item.find("link").get_text(strip=True)
+        return link
+
     entry = soup.find("entry")
     if entry:
         link = entry.find("link")
@@ -184,11 +222,33 @@ def _aa_pick_first_from_index() -> Optional[str]:
         return None
 
     soup = BeautifulSoup(resp.content, "html.parser")
-    pattern = re.compile(r"^/tr/(spor|futbol|basketbol|voleybol|dunyadan-spor)/[a-z0-9\-]+/\d+$", re.I)
+
+    # 1) Строгий поиск по паттерну
     for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if pattern.match(href):
-            return "https://www.aa.com.tr" + href
+        href = a["href"].strip()
+        if AA_INDEX_LINK_RE.match(href):
+            full = href if href.startswith("http") else "https://www.aa.com.tr" + href
+            logger.debug(f"AA match (strict): {full}")
+            return full
+
+    # 2) Фолбэк: любые ссылки со структурой /tr/.../<id> и упоминанием 'spor'
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        if "/tr/" in href and re.search(r"/\d+/?$", href) and "spor" in href:
+            full = href if href.startswith("http") else "https://www.aa.com.tr" + href
+            logger.debug(f"AA match (fallback): {full}")
+            return full
+
+    # 3) Ещё один фолбэк: пробуем вытащить из карточек
+    for sel in (".news", ".card", "article", ".list", ".content", ".headline"):
+        for a in soup.select(f"{sel} a[href]"):
+            href = a.get("href", "").strip()
+            if AA_INDEX_LINK_RE.match(href):
+                full = href if href.startswith("http") else "https://www.aa.com.tr" + href
+                logger.debug(f"AA match (selector {sel}): {full}")
+                return full
+
+    logger.warning("AA: на индексной странице не нашли подходящую ссылку.")
     return None
 
 def get_aa_article(news_url: str) -> Optional[Tuple[str, str]]:
@@ -216,14 +276,16 @@ def get_aa_article(news_url: str) -> Optional[Tuple[str, str]]:
         t = soup.find("title")
         title = t.get_text(strip=True) if t else "Başlıksız"
 
-    # Основной контейнер статьи (по твоему примеру: .print > .detay-icerik)
+    # Основной контейнер статьи — учитываем разные варианты верстки
     candidates = [
         "div.detay-icerik",
         "div.print",
         'div[itemprop="articleBody"]',
+        "div.article",
         "article",
         "main",
         "section.content",
+        "section#content",
     ]
     body = None
     for sel in candidates:
@@ -238,7 +300,7 @@ def get_aa_article(news_url: str) -> Optional[Tuple[str, str]]:
     for tag in body.find_all(["h1","h2","h3","h4","h5","h6","p"], recursive=True):
         # пропускаем явные соц/промо/боковые блоки по классам
         classes = " ".join(tag.get("class", [])) if tag.has_attr("class") else ""
-        if re.search(r"(share|sosyal|whatsapp|promo|related|cookie|benzerHaberler)", classes, re.I):
+        if re.search(r"(share|sosyal|whatsapp|promo|related|cookie|benzerHaberler|subscription|banner)", classes, re.I):
             continue
         text = tag.get_text(" ", strip=True)
         if not text:
@@ -248,7 +310,7 @@ def get_aa_article(news_url: str) -> Optional[Tuple[str, str]]:
             continue
         parts.append(text)
 
-    # Фолбэк: если ничего не собралось — возьмём все <p>
+    # Фолбэк: если ничего не собралось — возьмём все <p> по документу
     if not parts:
         for p in soup.find_all("p"):
             t = p.get_text(" ", strip=True)
@@ -272,6 +334,10 @@ def parse_aa_spor_latest() -> Optional[Tuple[str, str]]:
     if not link:
         logger.warning("AA: не удалось найти свежую ссылку.")
         return None
+
+    # Нормализуем ссылку (на случай относительного href)
+    if not link.startswith("http"):
+        link = "https://www.aa.com.tr" + link
     return get_aa_article(link)
 
 # -------------- Главная --------------
@@ -324,4 +390,7 @@ def main():
         logger.success(f"✅ Отправлено новых сообщений: {total_sent}")
 
 if __name__ == "__main__":
+    # Полезно видеть отладку при первых запусках:
+    logger.remove()
+    logger.add(lambda msg: print(msg, end=""), level="DEBUG")
     main()
